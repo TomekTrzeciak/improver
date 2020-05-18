@@ -42,7 +42,7 @@ from improver.metadata.probabilistic import find_threshold_coordinate
 from improver.utilities.cube_checker import check_cube_coordinates
 
 
-def collapsed(cube, *args, **kwargs):
+def collapsed(cube, coord, aggregator, **kwargs):
     """Collapses the cube with given arguments.
 
     The cell methods of the output cube will match the cell methods
@@ -58,7 +58,23 @@ def collapsed(cube, *args, **kwargs):
             A collapsed cube where the cell methods match the input cube.
     """
     original_methods = cube.cell_methods
-    new_cube = cube.collapsed(*args, **kwargs)
+    weights = kwargs.get("weights")
+    if (
+        weights is not None
+        and weights.ndim == 1
+        and hasattr(aggregator, 'lazy_aggregate')
+    ):
+        # hack round Cube.collapsed requiring weights with full shape
+        # aggregate lazily without weights first just to get the metadata right
+        cube_data = cube.data
+        cube.data = cube.lazy_data()
+        new_cube = cube.collapsed(coord, aggregator)
+        # now do it again, this time calling the aggregator with weights
+        # directly, so we can use 1D weights
+        axis, = cube.coord_dims(coord)
+        new_cube.data = aggregator.aggregate(cube_data, axis=axis, **kwargs)
+    else:
+        new_cube = cube.collapsed(coord, aggregator, **kwargs)
     new_cube.cell_methods = original_methods
     return new_cube
 
